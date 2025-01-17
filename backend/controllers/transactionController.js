@@ -1,12 +1,13 @@
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 
+// deposit
 export const deposit = async (req, res) => {
   const { userId, amount } = req.body;
 
   // validates the amount
   if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid deposit amount' });
+    return res.status(400).json({ message: 'Invalid deposit amount!' });
   }
 
   try {
@@ -44,12 +45,13 @@ export const deposit = async (req, res) => {
   }
 };
 
+// withdraw
 export const withdraw = async (req, res) => {
   const { userId, amount } = req.body;
 
   // validates the amount
   if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid withdrawal amount' });
+    return res.status(400).json({ message: 'Invalid withdrawal amount!' });
   }
 
   try {
@@ -88,5 +90,68 @@ export const withdraw = async (req, res) => {
   } catch (error) {
     console.error('Error during withdrawal:', error);
     res.status(500).json({ message: 'Withdrawal failed', error: error.message || error });
+  }
+};
+
+// transfer
+export const transfer = async (req, res) => {
+  const { senderId, recipientId, amount } = req.body;
+
+  // validates amount
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ message: "Invalid transfer amount!" });
+  }
+  
+  try {
+    console.log('Fetching sender...');
+    const sender = await User.findByPk(senderId);
+
+    if (!sender) {
+      console.log('Sender not found:', senderID);
+      return res.status(404).json({ message: 'Sender not found' });
+    }
+
+    console.log('Fetching recipient...');
+    const recipient = await User.findByPk(recipientId);
+
+    if (!recipient) {
+      console.log('Recipient not found: ', recipientId);
+      return res.status(404).json({ message: 'Recipient not found' });
+    }
+    
+    // validates sender's balance
+    console.log('Sender balance:', sender.balance);
+    if (parseFloat(sender.balance) < parseFloat(amount)) {
+      console.log('Insufficient balance for sender:', sender.balance);
+      return res.status(400).json({ message: 'Insufficient balance' });
+    }
+
+    // updates sender and recipient balances
+    sender.balance = parseFloat(sender.balance) - parseFloat(amount);
+    recipient.balance = parseFloat(recipient.balance) + parseFloat(amount);
+
+    console.log('Saving updated balances...');
+    await sender.save();
+    await recipient.save();
+
+    // records the transaction
+    console.log('Creating transaction record...');
+    const transaction = await Transaction.create({
+      userId: senderId,
+      type: 'transfer',
+      amount,
+      status: 'completed',
+    });
+
+    console.log('Transfer successful:', transaction);
+    res.status(201).json({
+      message: 'Transfer successful',
+      senderBalance: sender.balance,
+      recipientBalance: recipient.balance,
+      transaction,
+    });
+  } catch (error) {
+    console.error('Error during transfer:', error);
+    res.status(500).json({ message: 'Transfer failed', error: error.message || error });
   }
 };
