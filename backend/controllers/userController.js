@@ -52,3 +52,9 @@ export const login = async (req, res) => {
     res.status(500).json({ message: 'Error logging in', error });
   }
 };
+
+const socket = io('http://localhost:5000');
+
+socket.on('transaction', (data) => {
+  console.log('Transaction Notification:', data);
+});

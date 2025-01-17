@@ -1,5 +1,6 @@
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
+import { io } from '../server.js';
 
 // deposit
 export const deposit = async (req, res) => {
@@ -34,6 +35,16 @@ export const deposit = async (req, res) => {
     });
 
     console.log('Transaction created:', transaction);
+
+    // emit real-time notification
+    io.emit('transaction', {
+      type: 'deposit',
+      userId,
+      amount,
+      balance: user.balance,
+      timestamp: transaction.createdAt,
+    });
+
     res.status(201).json({
       message: 'Deposit successful',
       balance: user.balance,
@@ -82,6 +93,16 @@ export const withdraw = async (req, res) => {
     });
 
     console.log('Withdrawal successful:', transaction);
+
+    // emit real-time notification
+    io.emit('transaction', {
+      type: 'withdrawal',
+      userId,
+      amount,
+      balance: user.balance,
+      timestamp: transaction.createdAt,
+    });
+
     res.status(201).json({
       message: 'Withdrawal successful',
       balance: user.balance,
@@ -99,15 +120,15 @@ export const transfer = async (req, res) => {
 
   // validates amount
   if (!amount || amount <= 0) {
-    return res.status(400).json({ message: "Invalid transfer amount!" });
+    return res.status(400).json({ message: 'Invalid transfer amount!' });
   }
-  
+
   try {
     console.log('Fetching sender...');
     const sender = await User.findByPk(senderId);
 
     if (!sender) {
-      console.log('Sender not found:', senderID);
+      console.log('Sender not found:', senderId);
       return res.status(404).json({ message: 'Sender not found' });
     }
 
@@ -118,7 +139,7 @@ export const transfer = async (req, res) => {
       console.log('Recipient not found: ', recipientId);
       return res.status(404).json({ message: 'Recipient not found' });
     }
-    
+
     // validates sender's balance
     console.log('Sender balance:', sender.balance);
     if (parseFloat(sender.balance) < parseFloat(amount)) {
@@ -144,6 +165,16 @@ export const transfer = async (req, res) => {
     });
 
     console.log('Transfer successful:', transaction);
+
+    // emit real-time notification
+    io.emit('transaction', {
+      type: 'transfer',
+      senderId,
+      recipientId,
+      amount,
+      timestamp: transaction.createdAt,
+    });
+
     res.status(201).json({
       message: 'Transfer successful',
       senderBalance: sender.balance,
