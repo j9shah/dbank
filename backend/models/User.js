@@ -1,5 +1,5 @@
-const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
+import { Sequelize, DataTypes } from 'sequelize';
+import sequelize from '../config/database.js';
 
 const User = sequelize.define('User', {
   username: {
@@ -25,6 +25,13 @@ const User = sequelize.define('User', {
       len: [6, 100], // minimum length of 6 characters needed
     },
   },
+  balance: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0.00,
+    validate: {
+      min: 0, // ensure balance cannot go below 0
+    },
+  },
 });
 
-module.exports = User;
+export default User;
