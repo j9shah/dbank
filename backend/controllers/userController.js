@@ -1,21 +1,23 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { io } from '../server.js';
 
+// Register User
 export const register = async (req, res) => {
   const { username, email, password } = req.body;
 
   try {
-    // check if user already exists
+    // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // hash password
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // create user
+    // Create user
     const newUser = await User.create({
       username,
       email,
@@ -28,23 +30,24 @@ export const register = async (req, res) => {
   }
 };
 
+// Login User
 export const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // find user by email
+    // Find user by email
     const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // compare password
+    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // generate JWT
+    // Generate JWT
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
     res.status(200).json({ message: 'Login successful', token });
@@ -53,8 +56,11 @@ export const login = async (req, res) => {
   }
 };
 
-const socket = io('http://localhost:5000');
+// Handle socket events when necessary
+export const handleSocketNotifications = () => {
+  const socket = io('http://localhost:5000');
 
-socket.on('transaction', (data) => {
-  console.log('Transaction Notification:', data);
-});
+  socket.on('transaction', (data) => {
+    console.log('Transaction Notification:', data);
+  });
+};
