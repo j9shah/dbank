@@ -1,10 +1,17 @@
-import './App.css'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Dashboard from './pages/Dashboard';
 
 function App() {
   return (
-    <div className="h-screen flex items-center justify-center bg-gradient-to-r from-blue-500 to-green-500">
-      <h1 className="text-4xl font-bold text-white">Welcome to dBank!</h1>
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </Router>
   );
 }
 
