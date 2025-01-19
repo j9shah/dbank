@@ -1,48 +1,40 @@
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
+import jwt from 'jsonwebtoken';
 import { io } from '../server.js';
+
+// helper function to extract userId from token
+const getUserIdFromToken = (req) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) throw new Error('Token missing');
+  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  return decoded.id;
+};
 
 // deposit
 export const deposit = async (req, res) => {
-  const { userId, amount } = req.body;
-
-  // validates the amount
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid deposit amount!' });
-  }
-
   try {
-    console.log('Fetching user with ID:', userId);
-    const user = await User.findByPk(userId);
+    const userId = getUserIdFromToken(req);
+    const { amount } = req.body;
 
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Invalid deposit amount!' });
+    }
+
+    const user = await User.findByPk(userId);
     if (!user) {
-      console.log('User not found:', userId);
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log('Current balance:', user.balance);
     user.balance = parseFloat(user.balance) + parseFloat(amount);
-    console.log('New balance:', user.balance);
-
-    console.log('Saving user balance...');
     await user.save();
 
-    console.log('Creating transaction record...');
     const transaction = await Transaction.create({
       userId,
       type: 'deposit',
       amount,
-    });
-
-    console.log('Transaction created:', transaction);
-
-    // emit real-time notification
-    io.emit('transaction', {
-      type: 'deposit',
-      userId,
-      amount,
-      balance: user.balance,
-      timestamp: transaction.createdAt,
+      details: 'Deposit',
+      senderRecipient: 'N/A',
     });
 
     res.status(201).json({
@@ -52,55 +44,38 @@ export const deposit = async (req, res) => {
     });
   } catch (error) {
     console.error('Error during deposit:', error);
-    res.status(500).json({ message: 'Deposit failed', error: error.message || error });
+    res.status(500).json({ message: 'Deposit failed', error: error.message });
   }
 };
 
 // withdraw
 export const withdraw = async (req, res) => {
-  const { userId, amount } = req.body;
-
-  // validates the amount
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid withdrawal amount!' });
-  }
-
   try {
-    console.log('Fetching user with ID:', userId);
-    const user = await User.findByPk(userId);
+    const userId = getUserIdFromToken(req);
+    const { amount } = req.body;
 
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Invalid withdrawal amount!' });
+    }
+
+    const user = await User.findByPk(userId);
     if (!user) {
-      console.log('User not found:', userId);
       return res.status(404).json({ message: 'User not found' });
     }
 
-    console.log('Current balance:', user.balance);
     if (parseFloat(user.balance) < parseFloat(amount)) {
-      console.log('Insufficient balance:', user.balance);
       return res.status(400).json({ message: 'Insufficient balance' });
     }
 
-    // updates the user's balance
     user.balance = parseFloat(user.balance) - parseFloat(amount);
-    console.log('New balance:', user.balance);
     await user.save();
 
-    // creates a withdrawal transaction
     const transaction = await Transaction.create({
       userId,
       type: 'withdrawal',
-      amount,
-    });
-
-    console.log('Withdrawal successful:', transaction);
-
-    // emit real-time notification
-    io.emit('transaction', {
-      type: 'withdrawal',
-      userId,
-      amount,
-      balance: user.balance,
-      timestamp: transaction.createdAt,
+      amount: -Math.abs(amount),
+      details: 'Withdrawal',
+      senderRecipient: 'N/A',
     });
 
     res.status(201).json({
@@ -110,79 +85,92 @@ export const withdraw = async (req, res) => {
     });
   } catch (error) {
     console.error('Error during withdrawal:', error);
-    res.status(500).json({ message: 'Withdrawal failed', error: error.message || error });
+    res.status(500).json({ message: 'Withdrawal failed', error: error.message });
   }
 };
 
 // transfer
 export const transfer = async (req, res) => {
-  const { senderId, recipientId, amount } = req.body;
-
-  // validates amount
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ message: 'Invalid transfer amount!' });
-  }
-
   try {
-    console.log('Fetching sender...');
-    const sender = await User.findByPk(senderId);
+    const senderId = getUserIdFromToken(req);
+    const { recipientEmail, amount } = req.body;
 
-    if (!sender) {
-      console.log('Sender not found:', senderId);
-      return res.status(404).json({ message: 'Sender not found' });
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Invalid transfer amount!' });
     }
 
-    console.log('Fetching recipient...');
-    const recipient = await User.findByPk(recipientId);
+    const sender = await User.findByPk(senderId);
+    const recipient = await User.findOne({ where: { email: recipientEmail } });
 
+    if (!sender) {
+      return res.status(404).json({ message: 'Sender not found' });
+    }
     if (!recipient) {
-      console.log('Recipient not found: ', recipientId);
       return res.status(404).json({ message: 'Recipient not found' });
     }
 
-    // validates sender's balance
-    console.log('Sender balance:', sender.balance);
     if (parseFloat(sender.balance) < parseFloat(amount)) {
-      console.log('Insufficient balance for sender:', sender.balance);
       return res.status(400).json({ message: 'Insufficient balance' });
     }
 
-    // updates sender and recipient balances
     sender.balance = parseFloat(sender.balance) - parseFloat(amount);
     recipient.balance = parseFloat(recipient.balance) + parseFloat(amount);
 
-    console.log('Saving updated balances...');
     await sender.save();
     await recipient.save();
 
-    // records the transaction
-    console.log('Creating transaction record...');
-    const transaction = await Transaction.create({
+    // records sender's transaction
+    await Transaction.create({
       userId: senderId,
       type: 'transfer',
-      amount,
-      status: 'completed',
+      amount: -amount,
+      details: `Transfer to ${recipient.username}`,
+      senderRecipient: recipient.username,
+      isCredit: false,
     });
 
-    console.log('Transfer successful:', transaction);
+    // records recipient's transaction
+    await Transaction.create({
+      userId: recipient.id,
+      type: 'transfer',
+      amount,
+      details: `Received from ${sender.username}`,
+      senderRecipient: sender.username,
+      isCredit: true,
+    });
 
-    // emit real-time notification
     io.emit('transaction', {
       type: 'transfer',
       senderId,
-      recipientId,
+      recipientId: recipient.id,
       amount,
-      timestamp: transaction.createdAt,
     });
 
     res.status(201).json({
       message: 'Transfer successful',
       senderBalance: sender.balance,
       recipientBalance: recipient.balance,
-      transaction,
     });
   } catch (error) {
     console.error('Error during transfer:', error);
-    res.status(500).json({ message: 'Transfer failed', error: error.message || error });
+    res.status(500).json({ message: 'Transfer failed', error: error.message });
+  }
+};
+
+// fetches transactions
+export const getTransactions = async (req, res) => {
+  try {
+    const transactions = await Transaction.findAll({
+      where: { userId: req.user.id },
+      attributes: ['id', 'type', 'amount', 'details', 'isCredit', 'senderRecipient', 'createdAt'],
+      order: [['createdAt', 'DESC']],
+      limit: 10,
+    });
+
+    console.log("Fetched Transactions:", transactions); // Log transactions here
+    res.status(200).json({ transactions });
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    res.status(500).json({ message: 'Error fetching transactions', error });
   }
 };

@@ -27,9 +27,15 @@ const User = sequelize.define('User', {
   },
   balance: {
     type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0.00,
+    defaultValue: 0.0,
     validate: {
       min: 0, // ensure balance cannot go below 0
+    },
+  },
+}, {
+  getterMethods: {
+    formattedId() {
+      return this.id.toString().padStart(5, '0'); // Format ID as 5 digits
     },
   },
 });
